@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: bidmarket-api
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npm run build --workspace=packages/shared && npm run build --workspace=apps/api
+    startCommand: npm run start --workspace=apps/api
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        sync: false
+      - key: PORT
+        value: 4000

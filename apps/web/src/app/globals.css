@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+@theme {
+  /* Warm linen canvas */
+  --color-background: #faf7f2;
+  --color-foreground: #1c1410;
+  --color-muted: #7a6f66;
+  --color-border: #e5ddd3;
+  --color-card: #fffcf8;
+
+  /* Gold — primary action, bid energy */
+  --color-accent: #b45309;
+  --color-accent-hover: #92400e;
+  --color-accent-muted: #fef3c7;
+  --color-accent-foreground: #ffffff;
+
+  /* Deep forest — brand, trust, header accents */
+  --color-brand: #1a3c34;
+  --color-brand-hover: #142f28;
+  --color-brand-muted: #e8f2ef;
+  --color-brand-foreground: #f8faf9;
+
+  /* Semantic */
+  --color-live: #166534;
+  --color-live-muted: #dcfce7;
+  --color-urgent: #be123c;
+  --color-urgent-muted: #ffe4e6;
+  --color-winning: #047857;
+  --color-winning-muted: #d1fae5;
+  --color-outbid: #c2410c;
+  --color-outbid-muted: #ffedd5;
+
+  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --shadow-card: 0 1px 2px rgb(28 20 16 / 0.04), 0 4px 20px rgb(28 20 16 / 0.06);
+  --shadow-card-hover: 0 8px 30px rgb(28 20 16 / 0.1);
+  --shadow-glow: 0 0 0 1px rgb(180 83 9 / 0.08), 0 4px 20px rgb(180 83 9 / 0.12);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--color-accent) 25%, transparent);
+  }
+}
+
+@utility tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility hero-gradient {
+  background:
+    radial-gradient(ellipse 90% 70% at 100% 0%, rgb(180 83 9 / 0.09), transparent 55%),
+    radial-gradient(ellipse 60% 50% at 0% 100%, rgb(26 60 52 / 0.07), transparent 50%),
+    linear-gradient(180deg, #fffcf8 0%, #faf7f2 100%);
+}
+
+@utility section-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+@utility card-elevated {
+  box-shadow: var(--shadow-card);
+}
+
+@utility card-elevated-hover {
+  box-shadow: var(--shadow-card-hover);
+}
+
+@utility image-overlay {
+  background: linear-gradient(
+    to top,
+    rgb(28 20 16 / 0.72) 0%,
+    rgb(28 20 16 / 0.15) 45%,
+    transparent 100%
+  );
+}
+
+@utility brand-gradient {
+  background: linear-gradient(135deg, #1a3c34 0%, #234d42 50%, #1a3c34 100%);
+}
+
+@keyframes pulse-live {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.animate-pulse-live {
+  animation: pulse-live 2s ease-in-out infinite;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-live,
+  .animate-fade-up {
+    animation: none;
+  }
+}
