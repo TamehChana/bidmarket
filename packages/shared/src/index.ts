@@ -79,7 +79,11 @@ export interface CreateListingRequest {
   imageUrl: string;
   startPrice: number;
   bidIncrement: number;
-  durationHours: number;
+  durationMinutes: number;
+}
+
+export interface UploadImageResponse {
+  url: string;
 }
 
 export interface SellerStats {
@@ -146,3 +150,79 @@ export function formatCurrency(amount: number): string {
     maximumFractionDigits: 0,
   }).format(amount);
 }
+
+export const LISTING_CATEGORIES = [
+  "Art",
+  "Cameras",
+  "Collectibles",
+  "Electronics",
+  "Fashion",
+  "Furniture",
+  "Jewelry",
+  "Watches",
+  "Other",
+] as const;
+
+export type ListingCategory = (typeof LISTING_CATEGORIES)[number];
+
+export interface ListingDraftRequest {
+  keywords: string;
+  imageUrl?: string;
+  conditionHint?: string;
+}
+
+export interface ListingDraftResponse {
+  title: string;
+  descriptionEn: string;
+  descriptionFr: string;
+  category: ListingCategory;
+  startPrice: number;
+  bidIncrement: number;
+  priceReasoning: string;
+}
+
+export interface AiSearchRequest {
+  query: string;
+}
+
+export interface AiSearchFilters {
+  keywords: string[];
+  category?: string;
+  maxPrice?: number;
+  minPrice?: number;
+  liveOnly?: boolean;
+}
+
+export interface AiSearchResponse {
+  auctions: Auction[];
+  interpretation: string;
+  filters: AiSearchFilters;
+}
+
+export interface BidCoachRequest {
+  auctionId: string;
+  question: string;
+}
+
+export interface BidCoachResponse {
+  answer: string;
+}
+
+export type ModerationVerdict = "approve" | "review" | "reject";
+
+export interface ModerationResult {
+  auctionId: string;
+  verdict: ModerationVerdict;
+  reasons: string[];
+  confidence: number;
+}
+
+export interface ModerationScanResponse {
+  results: ModerationResult[];
+}
+
+export {
+  SESSION_PREFIX,
+  createSessionToken,
+  parseSessionToken,
+} from "./session.js";
