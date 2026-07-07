@@ -1,6 +1,4 @@
-import { AuctionDetailClient } from "@/components/auction/auction-detail-client";
-import { ApiUnavailable } from "@/components/layout/api-unavailable";
-import { api } from "@/lib/api";
+import { AuctionDetailLoader } from "@/components/auction/auction-detail-loader";
 
 export const dynamic = "force-dynamic";
 
@@ -10,11 +8,5 @@ interface AuctionPageProps {
 
 export default async function AuctionPage({ params }: AuctionPageProps) {
   const { id } = await params;
-
-  try {
-    const auction = await api.getAuction(id);
-    return <AuctionDetailClient initialAuction={auction} />;
-  } catch {
-    return <ApiUnavailable />;
-  }
+  return <AuctionDetailLoader auctionId={id} />;
 }

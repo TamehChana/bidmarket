@@ -21,7 +21,7 @@ export default function HowItWorksPage() {
     <div>
       <div className="hero-gradient border-b border-border">
         <div className="mx-auto max-w-3xl px-4 py-14 text-center sm:px-6">
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          <h1 className="text-3xl font-normal tracking-tight sm:text-4xl">
             How BidMarket works
           </h1>
           <p className="mt-4 text-lg text-muted">
@@ -36,7 +36,7 @@ export default function HowItWorksPage() {
           {steps.map((item) => (
             <div
               key={item.step}
-              className="flex gap-5 rounded-2xl border border-border bg-card p-6 card-elevated"
+              className="flex gap-5 rounded-xl border border-border bg-card p-6 card-elevated"
             >
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-muted text-sm font-semibold text-accent">
                 {item.step}
@@ -49,8 +49,8 @@ export default function HowItWorksPage() {
           ))}
         </div>
 
-        <div className="mt-10 rounded-2xl bg-brand-muted p-6">
-          <h3 className="font-semibold">Payment methods</h3>
+        <div className="mt-10 rounded-xl border border-border bg-brand-muted p-6">
+          <h3 className="font-medium">Payment methods</h3>
           <p className="mt-2 text-sm leading-6 text-muted">
             Winners pay through Fapshi, supporting MTN Mobile Money and Orange
             Money. All prices are listed in XAF (Central African CFA franc).

@@ -8,6 +8,7 @@ import { useAuthModal } from "@/context/auth-modal-context";
 import { api } from "@/lib/api";
 import { AuctionCard, AuctionCardSkeleton } from "@/components/auction/auction-card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 export default function MyBidsPage() {
   const { isAuthenticated, isLoading, token, user } = useAuth();
@@ -16,13 +17,13 @@ export default function MyBidsPage() {
   const [loadingAuctions, setLoadingAuctions] = useState(true);
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isAuthenticated || !token) {
       setLoadingAuctions(false);
       return;
     }
 
     api
-      .getAuctions(token)
+      .getMyBids(token)
       .then(setAuctions)
       .finally(() => setLoadingAuctions(false));
   }, [isAuthenticated, token]);
@@ -50,7 +51,11 @@ export default function MyBidsPage() {
           className="mt-6"
           size="lg"
           onClick={() =>
-            openAuthModal({ returnUrl: "/me/bids", intent: "general" })
+            openAuthModal({
+              returnUrl: "/me/bids",
+              intent: "general",
+              defaultMode: "login",
+            })
           }
         >
           Sign in to continue
@@ -60,8 +65,9 @@ export default function MyBidsPage() {
   }
 
   const active = auctions.filter((auction) => auction.status === "live");
-  const winning = active.filter(
-    (auction) => auction.highBidderId === user?.id,
+  const winning = auctions.filter(
+    (auction) =>
+      auction.status === "live" && auction.highBidderId === user?.id,
   );
 
   return (
@@ -71,7 +77,7 @@ export default function MyBidsPage() {
         <p className="mt-2 text-muted">
           {winning.length > 0
             ? `You're currently winning ${winning.length} auction${winning.length === 1 ? "" : "s"}.`
-            : "Track auctions you've bid on and jump back in quickly."}
+            : "Auctions you've placed bids on."}
         </p>
       </div>
 
@@ -81,9 +87,9 @@ export default function MyBidsPage() {
             <AuctionCardSkeleton key={index} />
           ))}
         </div>
-      ) : active.length === 0 ? (
+      ) : auctions.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border bg-card p-10 text-center">
-          <p className="font-medium">No active bids yet</p>
+          <p className="font-medium">No bids yet</p>
           <p className="mt-2 text-sm text-muted">
             Browse live auctions and place your first bid.
           </p>
@@ -96,11 +102,30 @@ export default function MyBidsPage() {
         </div>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {active.map((auction) => (
-            <AuctionCard key={auction.id} auction={auction} />
-          ))}
+          {auctions.map((auction) => {
+            const isWinning =
+              auction.status === "live" && auction.highBidderId === user?.id;
+
+            return (
+              <div key={auction.id} className="relative">
+                {isWinning ? (
+                  <Badge variant="winning" className="absolute right-3 top-3 z-10">
+                    Winning
+                  </Badge>
+                ) : null}
+                <AuctionCard auction={auction} />
+              </div>
+            );
+          })}
         </div>
       )}
+
+      {active.length > 0 && auctions.length > active.length ? (
+        <p className="mt-8 text-sm text-muted">
+          Showing {auctions.length} auction{auctions.length === 1 ? "" : "s"} you&apos;ve bid on
+          ({active.length} still live).
+        </p>
+      ) : null}
     </div>
   );
 }
