@@ -24,13 +24,17 @@ npm run dev:web
 
 Open [http://localhost:3000](http://localhost:3000)
 
-### Demo accounts
+### Seeded accounts
 
-| Role | Email | Password |
-|------|-------|----------|
-| Bidder | `demo@bidmarket.com` | `password123` |
-| Seller | `seller@bidmarket.com` | `password123` |
-| Admin | `admin@bidmarket.com` | `password123` |
+Set `SEED_ACCOUNT_PASSWORD` in your environment to enable login for the built-in demo accounts:
+
+| Role | Email |
+|------|-------|
+| Bidder | `demo@bidmarket.com` |
+| Seller | `seller@bidmarket.com` |
+| Admin | `admin@bidmarket.com` |
+
+Do not commit passwords to the repo. Configure `SEED_ACCOUNT_PASSWORD` locally (see `apps/web/.env.example`) and in Vercel project settings for production.
 
 ## Project structure
 

@@ -1,0 +1,13 @@
+node_modules
+.next
+dist
+.git
+.env
+.env.local
+.env.*
+!.env.example
+*.log
+.DS_Store
+apps/web
+README.md
+.cursor
