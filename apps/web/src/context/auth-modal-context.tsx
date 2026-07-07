@@ -10,11 +10,12 @@ import {
 import type { Auction } from "@bidmarket/shared";
 import { AuthModal } from "@/components/auth/auth-modal";
 
-export type AuthIntent = "bid" | "watch" | "general";
+export type AuthIntent = "bid" | "watch" | "admin" | "general";
 
 interface AuthModalOptions {
   returnUrl?: string;
   intent?: AuthIntent;
+  defaultMode?: "login" | "register";
   auction?: Pick<Auction, "id" | "currentBid" | "product">;
 }
 
