@@ -7,6 +7,7 @@ import {
   Gavel,
   Shield,
   ShoppingBag,
+  Sparkles,
   Users,
 } from "lucide-react";
 import type {
@@ -14,6 +15,7 @@ import type {
   AdminStats,
   AdminUser,
   Auction,
+  ModerationResult,
 } from "@bidmarket/shared";
 import { formatCurrency } from "@bidmarket/shared";
 import { useAuth } from "@/context/auth-context";
@@ -24,13 +26,14 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 type Tab = "auctions" | "users" | "payments";
+type UserFilter = "all" | "buyers" | "sellers";
 
 export function AdminDashboard() {
-  const { isAuthenticated, isAdmin, isLoading, token, user, logout, login } =
+  const { isAuthenticated, isAdmin, isLoading, token, user, logout } =
     useAuth();
   const { openAuthModal } = useAuthModal();
-  const [switchingAccount, setSwitchingAccount] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("auctions");
+  const [userFilter, setUserFilter] = useState<UserFilter>("all");
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [auctions, setAuctions] = useState<Auction[]>([]);
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -38,6 +41,10 @@ export function AdminDashboard() {
   const [loadingData, setLoadingData] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [moderationResults, setModerationResults] = useState<
+    Record<string, ModerationResult>
+  >({});
+  const [moderating, setModerating] = useState(false);
 
   const loadData = useCallback(async () => {
     if (!token || !isAdmin) return;
@@ -122,18 +129,33 @@ export function AdminDashboard() {
     }
   }
 
-  async function handleSignInAsAdmin() {
-    setSwitchingAccount(true);
+  function openAdminSignIn() {
+    openAuthModal({
+      returnUrl: "/admin",
+      intent: "admin",
+      defaultMode: "login",
+    });
+  }
+
+  async function handleModerationScan(auctionIds?: string[]) {
+    if (!token) return;
+    setModerating(true);
     setActionError(null);
     try {
-      logout();
-      await login("admin@bidmarket.com", "password123");
+      const { results } = await api.adminModerateAuctions(token, auctionIds);
+      setModerationResults((prev) => {
+        const next = { ...prev };
+        for (const result of results) {
+          next[result.auctionId] = result;
+        }
+        return next;
+      });
     } catch (err) {
       setActionError(
-        err instanceof Error ? err.message : "Failed to sign in as admin",
+        err instanceof Error ? err.message : "AI moderation scan failed",
       );
     } finally {
-      setSwitchingAccount(false);
+      setModerating(false);
     }
   }
 
@@ -149,17 +171,11 @@ export function AdminDashboard() {
     return (
       <div className="mx-auto max-w-xl px-4 py-20 text-center sm:px-6">
         <Shield className="mx-auto h-12 w-12 text-accent" />
-        <h1 className="mt-4 text-3xl font-bold">Admin Dashboard</h1>
+        <h1 className="mt-4 text-3xl font-normal">Admin Dashboard</h1>
         <p className="mt-3 text-muted">
           Sign in with an admin account to manage users, auctions, and payments.
         </p>
-        <Button
-          className="mt-6"
-          size="lg"
-          onClick={() =>
-            openAuthModal({ returnUrl: "/admin", intent: "general" })
-          }
-        >
+        <Button className="mt-6" size="lg" onClick={openAdminSignIn}>
           Sign in to continue
         </Button>
       </div>
@@ -177,20 +193,25 @@ export function AdminDashboard() {
           which does not have admin privileges.
         </p>
         <p className="mt-2 text-sm text-muted">
-          Use the button below to switch to the demo admin account.
+          Sign out and sign in with an account that has admin access.
         </p>
         {actionError ? (
           <p className="mt-4 text-sm text-urgent">{actionError}</p>
         ) : null}
         <div className="mt-6 flex flex-wrap justify-center gap-3">
-          <Button onClick={handleSignInAsAdmin} disabled={switchingAccount}>
-            {switchingAccount ? "Signing in..." : "Sign in as admin"}
+          <Button
+            onClick={() => {
+              logout();
+              openAdminSignIn();
+            }}
+          >
+            Sign in as admin
           </Button>
           <Button
             variant="secondary"
             onClick={() => {
               logout();
-              openAuthModal({ returnUrl: "/admin", intent: "general" });
+              openAdminSignIn();
             }}
           >
             Use another account
@@ -203,21 +224,46 @@ export function AdminDashboard() {
     );
   }
 
+  const filteredUsers = users.filter((entry) => {
+    if (userFilter === "buyers") {
+      return !entry.isSeller && !entry.isAdmin;
+    }
+    if (userFilter === "sellers") {
+      return entry.isSeller;
+    }
+    return true;
+  });
+
+  const buyerCount = users.filter(
+    (entry) => !entry.isSeller && !entry.isAdmin,
+  ).length;
+  const sellerCount = users.filter((entry) => entry.isSeller).length;
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="section-label">Platform control</p>
-          <h1 className="mt-1 text-3xl font-bold tracking-tight">
+          <h1 className="mt-1 text-3xl font-normal tracking-tight">
             Admin Dashboard
           </h1>
           <p className="mt-2 text-muted">
             Moderate listings, manage users, and monitor payments.
           </p>
         </div>
-        <Button variant="secondary" onClick={loadData} disabled={loadingData}>
-          Refresh
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={loadData} disabled={loadingData}>
+            Refresh
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => handleModerationScan()}
+            disabled={moderating || loadingData}
+          >
+            <Sparkles className="mr-2 h-4 w-4" />
+            {moderating ? "Scanning..." : "AI moderation scan"}
+          </Button>
+        </div>
       </div>
 
       {actionError ? (
@@ -258,9 +304,9 @@ export function AdminDashboard() {
       <div className="mt-10 flex flex-wrap gap-2 border-b border-border pb-px">
         {(
           [
-            ["auctions", "Auctions"],
-            ["users", "Users"],
-            ["payments", "Payments"],
+            ["auctions", `Auctions (${auctions.length})`],
+            ["users", `Buyers & sellers (${users.length})`],
+            ["payments", `Payments (${payments.length})`],
           ] as const
         ).map(([tab, label]) => (
           <button
@@ -290,12 +336,20 @@ export function AdminDashboard() {
           <AuctionsTable
             auctions={auctions}
             actionLoading={actionLoading}
+            moderationResults={moderationResults}
+            moderating={moderating}
+            onModerate={handleModerationScan}
             onEnd={handleEndAuction}
             onRemove={handleRemoveAuction}
           />
         ) : activeTab === "users" ? (
           <UsersTable
-            users={users}
+            users={filteredUsers}
+            totalUserCount={users.length}
+            filter={userFilter}
+            buyerCount={buyerCount}
+            sellerCount={sellerCount}
+            onFilterChange={setUserFilter}
             actionLoading={actionLoading}
             onToggleSeller={handleToggleSeller}
           />
@@ -333,11 +387,17 @@ function StatCard({
 function AuctionsTable({
   auctions,
   actionLoading,
+  moderationResults,
+  moderating,
+  onModerate,
   onEnd,
   onRemove,
 }: {
   auctions: Auction[];
   actionLoading: string | null;
+  moderationResults: Record<string, ModerationResult>;
+  moderating: boolean;
+  onModerate: (auctionIds?: string[]) => void;
   onEnd: (id: string) => void;
   onRemove: (id: string) => void;
 }) {
@@ -347,18 +407,21 @@ function AuctionsTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[720px] text-left text-sm">
+      <table className="w-full min-w-[860px] text-left text-sm">
         <thead>
           <tr className="border-b border-border bg-brand-muted/50 text-xs font-semibold uppercase tracking-wide text-muted">
             <th className="px-5 py-3">Listing</th>
             <th className="px-5 py-3">Seller</th>
             <th className="px-5 py-3">Current bid</th>
             <th className="px-5 py-3">Status</th>
+            <th className="px-5 py-3">AI review</th>
             <th className="px-5 py-3 text-right">Actions</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
-          {auctions.map((auction) => (
+          {auctions.map((auction) => {
+            const moderation = moderationResults[auction.id];
+            return (
             <tr key={auction.id} className="hover:bg-brand-muted/30">
               <td className="px-5 py-4">
                 <Link
@@ -379,6 +442,27 @@ function AuctionsTable({
                 <Badge variant={auction.status === "live" ? "live" : "ended"}>
                   {auction.status}
                 </Badge>
+              </td>
+              <td className="px-5 py-4">
+                {moderation ? (
+                  <div className="space-y-1">
+                    <ModerationBadge verdict={moderation.verdict} />
+                    {moderation.reasons[0] ? (
+                      <p className="max-w-[180px] text-xs text-muted">
+                        {moderation.reasons[0]}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={moderating}
+                    onClick={() => onModerate([auction.id])}
+                  >
+                    Scan
+                  </Button>
+                )}
               </td>
               <td className="px-5 py-4">
                 <div className="flex justify-end gap-2">
@@ -403,27 +487,90 @@ function AuctionsTable({
                 </div>
               </td>
             </tr>
-          ))}
+          );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
+function ModerationBadge({
+  verdict,
+}: {
+  verdict: ModerationResult["verdict"];
+}) {
+  if (verdict === "approve") {
+    return <Badge variant="winning">Approve</Badge>;
+  }
+  if (verdict === "review") {
+    return <Badge variant="outbid">Review</Badge>;
+  }
+  return <Badge variant="urgent">Reject</Badge>;
+}
+
 function UsersTable({
   users,
+  totalUserCount,
+  filter,
+  buyerCount,
+  sellerCount,
+  onFilterChange,
   actionLoading,
   onToggleSeller,
 }: {
   users: AdminUser[];
+  totalUserCount: number;
+  filter: UserFilter;
+  buyerCount: number;
+  sellerCount: number;
+  onFilterChange: (filter: UserFilter) => void;
   actionLoading: string | null;
   onToggleSeller: (userId: string, isSeller: boolean) => void;
 }) {
-  if (users.length === 0) {
-    return <EmptyState message="No users registered." />;
-  }
+  const filters: { id: UserFilter; label: string; count: number }[] = [
+    { id: "all", label: "All", count: totalUserCount },
+    { id: "buyers", label: "Buyers", count: buyerCount },
+    { id: "sellers", label: "Sellers", count: sellerCount },
+  ];
 
   return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+        <p className="text-sm text-muted">
+          Manage registered buyers and sellers. Buyers can bid; sellers can list
+          auctions.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {filters.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onFilterChange(item.id)}
+              className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-semibold transition-colors",
+                filter === item.id
+                  ? "bg-accent text-accent-foreground"
+                  : "bg-brand-muted text-muted hover:text-foreground",
+              )}
+            >
+              {item.label} ({item.count})
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {users.length === 0 ? (
+        <EmptyState
+          message={
+            filter === "buyers"
+              ? "No buyers in this view yet. New registrations appear here as Bidder accounts."
+              : filter === "sellers"
+                ? "No sellers yet. Promote a buyer with “Make seller”."
+                : "No users registered yet."
+          }
+        />
+      ) : (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead>
@@ -465,6 +612,8 @@ function UsersTable({
           ))}
         </tbody>
       </table>
+    </div>
+      )}
     </div>
   );
 }

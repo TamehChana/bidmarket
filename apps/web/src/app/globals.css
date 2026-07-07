@@ -1,39 +1,39 @@
 @import "tailwindcss";
 
 @theme {
-  /* Warm linen canvas */
-  --color-background: #faf7f2;
-  --color-foreground: #1c1410;
-  --color-muted: #7a6f66;
-  --color-border: #e5ddd3;
-  --color-card: #fffcf8;
+  /* Google Material surfaces */
+  --color-background: #ffffff;
+  --color-foreground: #202124;
+  --color-muted: #5f6368;
+  --color-border: #dadce0;
+  --color-card: #ffffff;
 
-  /* Gold — primary action, bid energy */
-  --color-accent: #b45309;
-  --color-accent-hover: #92400e;
-  --color-accent-muted: #fef3c7;
+  /* Google blue — primary actions */
+  --color-accent: #1a73e8;
+  --color-accent-hover: #1765cc;
+  --color-accent-muted: #e8f0fe;
   --color-accent-foreground: #ffffff;
 
-  /* Deep forest — brand, trust, header accents */
-  --color-brand: #1a3c34;
-  --color-brand-hover: #142f28;
-  --color-brand-muted: #e8f2ef;
-  --color-brand-foreground: #f8faf9;
+  /* Neutral surfaces & chrome */
+  --color-brand: #1a73e8;
+  --color-brand-hover: #1765cc;
+  --color-brand-muted: #f1f3f4;
+  --color-brand-foreground: #202124;
 
   /* Semantic */
-  --color-live: #166534;
-  --color-live-muted: #dcfce7;
-  --color-urgent: #be123c;
-  --color-urgent-muted: #ffe4e6;
-  --color-winning: #047857;
-  --color-winning-muted: #d1fae5;
-  --color-outbid: #c2410c;
-  --color-outbid-muted: #ffedd5;
+  --color-live: #137333;
+  --color-live-muted: #e6f4ea;
+  --color-urgent: #c5221f;
+  --color-urgent-muted: #fce8e6;
+  --color-winning: #137333;
+  --color-winning-muted: #e6f4ea;
+  --color-outbid: #e37400;
+  --color-outbid-muted: #fef7e0;
 
-  --font-sans: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
-  --shadow-card: 0 1px 2px rgb(28 20 16 / 0.04), 0 4px 20px rgb(28 20 16 / 0.06);
-  --shadow-card-hover: 0 8px 30px rgb(28 20 16 / 0.1);
-  --shadow-glow: 0 0 0 1px rgb(180 83 9 / 0.08), 0 4px 20px rgb(180 83 9 / 0.12);
+  --font-sans: var(--font-roboto), Roboto, Arial, sans-serif;
+  --shadow-card: 0 1px 2px 0 rgb(60 64 67 / 0.3), 0 1px 3px 1px rgb(60 64 67 / 0.15);
+  --shadow-card-hover: 0 1px 3px 0 rgb(60 64 67 / 0.3), 0 4px 8px 3px rgb(60 64 67 / 0.15);
+  --shadow-glow: 0 1px 2px 0 rgb(26 115 232 / 0.3);
 }
 
 @layer base {
@@ -47,7 +47,7 @@
   }
 
   ::selection {
-    background: color-mix(in srgb, var(--color-accent) 25%, transparent);
+    background: color-mix(in srgb, var(--color-accent) 20%, transparent);
   }
 }
 
@@ -56,18 +56,15 @@
 }
 
 @utility hero-gradient {
-  background:
-    radial-gradient(ellipse 90% 70% at 100% 0%, rgb(180 83 9 / 0.09), transparent 55%),
-    radial-gradient(ellipse 60% 50% at 0% 100%, rgb(26 60 52 / 0.07), transparent 50%),
-    linear-gradient(180deg, #fffcf8 0%, #faf7f2 100%);
+  background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%);
 }
 
 @utility section-label {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--color-accent);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-muted);
 }
 
 @utility card-elevated {
@@ -81,14 +78,14 @@
 @utility image-overlay {
   background: linear-gradient(
     to top,
-    rgb(28 20 16 / 0.72) 0%,
-    rgb(28 20 16 / 0.15) 45%,
+    rgb(32 33 36 / 0.72) 0%,
+    rgb(32 33 36 / 0.12) 45%,
     transparent 100%
   );
 }
 
 @utility brand-gradient {
-  background: linear-gradient(135deg, #1a3c34 0%, #234d42 50%, #1a3c34 100%);
+  background: linear-gradient(135deg, #1a73e8 0%, #4285f4 100%);
 }
 
 @keyframes pulse-live {
@@ -97,7 +94,7 @@
     opacity: 1;
   }
   50% {
-    opacity: 0.4;
+    opacity: 0.45;
   }
 }
 
@@ -108,7 +105,7 @@
 @keyframes fade-up {
   from {
     opacity: 0;
-    transform: translateY(16px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
@@ -117,7 +114,7 @@
 }
 
 .animate-fade-up {
-  animation: fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: fade-up 0.45s cubic-bezier(0.2, 0, 0, 1) both;
 }
 
 @media (prefers-reduced-motion: reduce) {

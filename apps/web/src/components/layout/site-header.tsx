@@ -18,9 +18,22 @@ const navItems = [
 
 export function SiteHeader() {
   const pathname = usePathname();
-  const { user, isAuthenticated, isAdmin, logout } = useAuth();
+  const { user, isAuthenticated, isAdmin, isLoading, logout } = useAuth();
   const { openAuthModal } = useAuthModal();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const isAdminRoute = pathname.startsWith("/admin");
+
+  function openSignInModal() {
+    if (isAdminRoute) {
+      openAuthModal({
+        returnUrl: "/admin",
+        intent: "admin",
+        defaultMode: "login",
+      });
+      return;
+    }
+    openAuthModal({ intent: "general", defaultMode: "login" });
+  }
 
   function handleNavClick(href: string, requiresAuth?: boolean) {
     setMobileOpen(false);
@@ -29,24 +42,33 @@ export function SiteHeader() {
     }
   }
 
+  function navLinkClass(isActive: boolean) {
+    return cn(
+      "rounded-full px-4 py-2 text-sm font-medium transition-colors",
+      isActive
+        ? "bg-accent-muted text-accent"
+        : "text-muted hover:bg-brand-muted hover:text-foreground",
+    );
+  }
+
+  const showAuthenticated = isAuthenticated;
+
   return (
-    <header className="sticky top-0 z-40 border-b border-border/60 bg-card/85 backdrop-blur-xl">
-      <div className="mx-auto flex h-[4.25rem] max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+    <header className="sticky top-0 z-40 border-b border-border bg-card shadow-sm">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
         <Link href="/" className="group flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl brand-gradient text-white shadow-sm transition-transform group-hover:scale-105">
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-accent-foreground shadow-sm transition-transform group-hover:scale-[1.02]">
             <Gavel className="h-4 w-4" />
           </span>
           <div className="leading-tight">
-            <span className="block text-base font-bold tracking-tight text-foreground">
+            <span className="block text-[1.125rem] font-medium tracking-tight text-foreground">
               BidMarket
             </span>
-            <span className="hidden text-[10px] font-medium uppercase tracking-widest text-muted sm:block">
-              Cameroon
-            </span>
+            <span className="hidden text-xs text-muted sm:block">Cameroon</span>
           </div>
         </Link>
 
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-0.5 md:flex">
           {navItems.map((item) => {
             const isActive =
               pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -62,7 +84,7 @@ export function SiteHeader() {
                       intent: "general",
                     })
                   }
-                  className="rounded-lg px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:bg-brand-muted hover:text-foreground"
+                  className={navLinkClass(false)}
                 >
                   {item.label}
                 </button>
@@ -73,12 +95,7 @@ export function SiteHeader() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={cn(
-                  "rounded-lg px-3.5 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-accent-muted text-accent"
-                    : "text-muted hover:bg-brand-muted hover:text-foreground",
-                )}
+                className={navLinkClass(isActive)}
               >
                 {item.label}
               </Link>
@@ -87,12 +104,7 @@ export function SiteHeader() {
           {isAdmin ? (
             <Link
               href="/admin"
-              className={cn(
-                "rounded-lg px-3.5 py-2 text-sm font-medium transition-colors",
-                pathname.startsWith("/admin")
-                  ? "bg-accent-muted text-accent"
-                  : "text-muted hover:bg-brand-muted hover:text-foreground",
-              )}
+              className={navLinkClass(pathname.startsWith("/admin"))}
             >
               Admin
             </Link>
@@ -100,13 +112,13 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-2">
-          {isAuthenticated ? (
+          {showAuthenticated && isAuthenticated ? (
             <>
               <div className="hidden items-center gap-2.5 sm:flex">
-                <span className="flex h-8 w-8 items-center justify-center rounded-full brand-gradient text-xs font-bold text-white">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-xs font-medium text-accent-foreground">
                   {user?.name?.charAt(0).toUpperCase()}
                 </span>
-                <span className="max-w-[120px] truncate text-sm font-medium text-foreground/80">
+                <span className="max-w-[120px] truncate text-sm text-foreground">
                   {user?.name}
                 </span>
               </div>
@@ -114,17 +126,24 @@ export function SiteHeader() {
                 Sign out
               </Button>
             </>
+          ) : isLoading ? (
+            <div className="h-9 w-24 animate-pulse rounded-full bg-brand-muted" />
           ) : (
             <>
               <Button
                 variant="ghost"
                 size="sm"
                 className="hidden sm:inline-flex"
-                onClick={() => openAuthModal({ intent: "general" })}
+                onClick={openSignInModal}
               >
                 Sign in
               </Button>
-              <Button size="sm" onClick={() => openAuthModal({ intent: "general" })}>
+              <Button
+                size="sm"
+                onClick={() =>
+                  openAuthModal({ intent: "general", defaultMode: "register" })
+                }
+              >
                 Get started
               </Button>
             </>
@@ -132,7 +151,7 @@ export function SiteHeader() {
 
           <button
             type="button"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground hover:bg-brand-muted md:hidden"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full text-foreground hover:bg-brand-muted md:hidden"
             onClick={() => setMobileOpen((open) => !open)}
             aria-label={mobileOpen ? "Close menu" : "Open menu"}
           >

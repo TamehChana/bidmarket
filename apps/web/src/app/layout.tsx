@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import { Roboto } from "next/font/google";
 import { AuthProvider } from "@/context/auth-context";
 import { AuthModalProvider } from "@/context/auth-modal-context";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import "./globals.css";
 
-const jakarta = Plus_Jakarta_Sans({
+const roboto = Roboto({
   subsets: ["latin"],
-  variable: "--font-jakarta",
+  weight: ["400", "500", "700"],
+  variable: "--font-roboto",
   display: "swap",
 });
 
@@ -25,10 +26,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${jakarta.variable} min-h-screen font-sans`}>
+      <body className={`${roboto.variable} min-h-screen font-sans`}>
         <AuthProvider>
           <AuthModalProvider>
-            <div className="flex min-h-screen flex-col">
+            <div className="flex min-h-screen flex-col bg-background">
               <SiteHeader />
               <main className="flex-1">{children}</main>
               <SiteFooter />

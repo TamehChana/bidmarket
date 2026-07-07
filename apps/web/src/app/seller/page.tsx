@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DollarSign, Gavel, Package, Plus } from "lucide-react";
-import type { Auction } from "@bidmarket/shared";
+import type { Auction, PaymentStatus } from "@bidmarket/shared";
 import { formatCurrency } from "@bidmarket/shared";
 import { useAuth } from "@/context/auth-context";
 import { useAuthModal } from "@/context/auth-modal-context";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { formatTimeRemaining } from "@/lib/auction";
+import { formatTimeRemaining, isAuctionEnded } from "@/lib/auction";
 import { useLiveCountdown } from "@/components/auction/countdown-timer";
 
 interface SellerStats {
@@ -25,10 +25,13 @@ export default function SellerDashboardPage() {
   const { isAuthenticated, isSeller, isLoading, token, user, becomeSeller } =
     useAuth();
   const { openAuthModal } = useAuthModal();
-  const [auctions, setAuctions] = useState<Auction[]>([]);
+  const [auctions, setAuctions] = useState<
+    Array<Auction & { paymentStatus: PaymentStatus | null }>
+  >([]);
   const [stats, setStats] = useState<SellerStats | null>(null);
   const [loadingData, setLoadingData] = useState(true);
   const [becomingSeller, setBecomingSeller] = useState(false);
+  const [sellerError, setSellerError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated || !isSeller || !token) {
@@ -36,18 +39,36 @@ export default function SellerDashboardPage() {
       return;
     }
 
-    Promise.all([api.getSellerAuctions(token), api.getSellerStats(token)])
-      .then(([sellerAuctions, sellerStats]) => {
-        setAuctions(sellerAuctions);
-        setStats(sellerStats);
-      })
-      .finally(() => setLoadingData(false));
+    const loadDashboard = () => {
+      setLoadingData(true);
+      return Promise.all([
+        api.getSellerAuctions(token),
+        api.getSellerStats(token),
+      ])
+        .then(([sellerAuctions, sellerStats]) => {
+          setAuctions(sellerAuctions);
+          setStats(sellerStats);
+        })
+        .finally(() => setLoadingData(false));
+    };
+
+    void loadDashboard();
+    const interval = setInterval(() => {
+      void api.syncSellerPayments(token).then(() => loadDashboard());
+    }, 15000);
+
+    return () => clearInterval(interval);
   }, [isAuthenticated, isSeller, token]);
 
   const handleBecomeSeller = async () => {
     setBecomingSeller(true);
+    setSellerError(null);
     try {
       await becomeSeller();
+    } catch (err) {
+      setSellerError(
+        err instanceof Error ? err.message : "Could not enable seller account",
+      );
     } finally {
       setBecomingSeller(false);
     }
@@ -100,6 +121,9 @@ export default function SellerDashboardPage() {
         >
           {becomingSeller ? "Setting up..." : "Become a seller"}
         </Button>
+        {sellerError ? (
+          <p className="mt-4 text-sm text-urgent">{sellerError}</p>
+        ) : null}
         <p className="mt-4 text-xs text-muted">
           Free for MVP — no fees while we&apos;re in beta.
         </p>
@@ -121,6 +145,10 @@ export default function SellerDashboardPage() {
           New listing
         </Button>
       </div>
+
+      <p className="mt-4 text-sm text-muted">
+        Sales and payment status refresh automatically every 15 seconds.
+      </p>
 
       {stats && (
         <div className="mt-8 grid gap-4 sm:grid-cols-3">
@@ -199,10 +227,31 @@ function StatCard({
   );
 }
 
-function SellerListingRow({ auction }: { auction: Auction }) {
+function SellerListingRow({
+  auction,
+}: {
+  auction: Auction & { paymentStatus: PaymentStatus | null };
+}) {
   const remaining = useLiveCountdown(auction.endsAt);
-  const isLive =
-    auction.status === "live" && remaining !== null && remaining > 0;
+  const ended = isAuctionEnded(auction);
+  const isLive = !ended && auction.status === "live";
+  const isPaid =
+    auction.paymentStatus === "successful" || auction.product.status === "sold";
+  const awaitingPayment =
+    ended && auction.paymentStatus === "pending" && auction.bidCount > 0;
+
+  let badgeLabel = "Live";
+  let badgeVariant: "live" | "winning" | "ended" | "default" = "live";
+  if (isPaid) {
+    badgeLabel = "Paid";
+    badgeVariant = "winning";
+  } else if (awaitingPayment) {
+    badgeLabel = "Awaiting payment";
+    badgeVariant = "ended";
+  } else if (ended) {
+    badgeLabel = "Ended";
+    badgeVariant = "ended";
+  }
 
   return (
     <Link
@@ -212,9 +261,7 @@ function SellerListingRow({ auction }: { auction: Auction }) {
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <p className="truncate font-medium">{auction.product.title}</p>
-          <Badge variant={isLive ? "live" : "default"}>
-            {isLive ? "Live" : auction.status}
-          </Badge>
+          <Badge variant={badgeVariant}>{badgeLabel}</Badge>
         </div>
         <p className="mt-1 text-sm text-muted">
           {auction.product.category} · {auction.bidCount} bid
