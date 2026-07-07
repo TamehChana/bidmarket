@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatCurrency, getMinimumBid } from "@bidmarket/shared";
-import type { Auction } from "@bidmarket/shared";
+import type { Auction, PaymentStatus } from "@bidmarket/shared";
 import { Smartphone, Trophy } from "lucide-react";
 import { useAuth } from "@/context/auth-context";
 import { useAuthModal } from "@/context/auth-modal-context";
@@ -27,10 +27,14 @@ export function BidPanel({ auction, onBidPlaced, className }: BidPanelProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | null>(null);
 
   const minimumBid = getMinimumBid(auction);
   const ended = isAuctionEnded(auction);
-  const isWinning = isAuthenticated && auction.highBidderId === user?.id;
+  const isOwnListing =
+    isAuthenticated && auction.product.sellerId === user?.id;
+  const isWinning =
+    isAuthenticated && !isOwnListing && auction.highBidderId === user?.id;
   const isOutbid =
     isAuthenticated &&
     !isWinning &&
@@ -40,6 +44,18 @@ export function BidPanel({ auction, onBidPlaced, className }: BidPanelProps) {
   useEffect(() => {
     setAmount(getMinimumBid(auction));
   }, [auction]);
+
+  useEffect(() => {
+    if (!ended || !isWinning || !token) {
+      setPaymentStatus(null);
+      return;
+    }
+
+    api
+      .getAuctionPaymentStatus(auction.id, token)
+      .then((result) => setPaymentStatus(result.status))
+      .catch(() => setPaymentStatus(null));
+  }, [auction.id, ended, isWinning, token]);
 
   async function handlePlaceBid() {
     if (!token) return;
@@ -62,15 +78,15 @@ export function BidPanel({ auction, onBidPlaced, className }: BidPanelProps) {
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-2xl border border-border bg-card card-elevated",
+        "overflow-hidden rounded-xl border border-border bg-card card-elevated",
         className,
       )}
     >
-      <div className="bg-gradient-to-br from-accent/5 to-transparent p-5">
+      <div className="border-b border-border bg-accent-muted/40 p-5">
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-sm text-muted">Current bid</p>
-            <p className="tabular-nums text-3xl font-semibold tracking-tight">
+            <p className="tabular-nums text-3xl font-medium tracking-tight">
               {formatCurrency(auction.currentBid)}
             </p>
           </div>
@@ -112,7 +128,16 @@ export function BidPanel({ auction, onBidPlaced, className }: BidPanelProps) {
               </div>
             )}
             {isWinning && isAuthenticated && token ? (
-              <PayNowButton auctionId={auction.id} token={token} />
+              paymentStatus === "successful" ? (
+                <div className="rounded-xl border border-winning/20 bg-winning-muted p-4 text-sm">
+                  <p className="font-medium text-winning">Payment complete</p>
+                  <p className="mt-1 text-muted">
+                    Your payment was received. The seller has been notified.
+                  </p>
+                </div>
+              ) : (
+                <PayNowButton auctionId={auction.id} token={token} />
+              )
             ) : null}
           </div>
         ) : !isAuthenticated ? (
@@ -139,6 +164,13 @@ export function BidPanel({ auction, onBidPlaced, className }: BidPanelProps) {
             >
               Sign in to bid
             </Button>
+          </div>
+        ) : isOwnListing ? (
+          <div className="rounded-xl border border-border bg-brand-muted p-4 text-sm">
+            <p className="font-medium">This is your listing</p>
+            <p className="mt-1 text-muted">
+              You can&apos;t bid on your own auction. Share the link so others can bid.
+            </p>
           </div>
         ) : (
           <div className="space-y-4">

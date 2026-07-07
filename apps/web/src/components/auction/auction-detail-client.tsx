@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { Auction } from "@bidmarket/shared";
 import { BidPanel } from "@/components/auction/bid-panel";
 import { BidHistory } from "@/components/auction/bid-history";
+import { BidCoachPanel } from "@/components/ai/bid-coach-panel";
 import { Badge } from "@/components/ui/badge";
 import { useAuction } from "@/hooks/use-auction";
 
@@ -85,6 +86,7 @@ export function AuctionDetailClient({
                 {currentAuction.product.description}
               </p>
             </div>
+            <BidCoachPanel auction={currentAuction} />
           </div>
         </div>
 

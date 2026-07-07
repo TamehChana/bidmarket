@@ -33,10 +33,10 @@ export function BrowseGrid({ auctions }: BrowseGridProps) {
             type="button"
             onClick={() => setActiveCategory(category)}
             className={cn(
-              "rounded-full px-4 py-2 text-sm font-semibold transition-all duration-200",
+              "rounded-full px-4 py-2 text-sm font-medium transition-colors",
               activeCategory === category
-                ? "bg-brand text-brand-foreground shadow-sm"
-                : "border border-border bg-card text-muted hover:border-accent/40 hover:text-foreground",
+                ? "bg-accent text-accent-foreground"
+                : "border border-border bg-card text-muted hover:bg-brand-muted hover:text-foreground",
             )}
           >
             {category}
@@ -57,7 +57,7 @@ export function BrowseGrid({ auctions }: BrowseGridProps) {
       </p>
 
       {filtered.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-card py-20 text-center">
+        <div className="rounded-xl border border-dashed border-border bg-card py-20 text-center">
           <p className="font-semibold text-foreground">No auctions in this category</p>
           <p className="mt-1.5 text-sm text-muted">Try another filter or check back soon.</p>
         </div>
