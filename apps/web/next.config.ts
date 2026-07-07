@@ -1,23 +1,28 @@
 import type { NextConfig } from "next";
 
-const apiUrl = process.env.API_URL ?? "http://localhost:4000";
-
 const nextConfig: NextConfig = {
+  transpilePackages: ["@bidmarket/api", "@bidmarket/shared"],
+  serverExternalPackages: [
+    "fastify",
+    "@fastify/cors",
+    "@fastify/multipart",
+    "@fastify/static",
+  ],
+  typescript: {
+    // Next.js typed-routes validator uses incorrect paths with src/app layout.
+    ignoreBuildErrors: true,
+  },
   images: {
     remotePatterns: [
       {
         protocol: "https",
         hostname: "images.unsplash.com",
       },
-    ],
-  },
-  async rewrites() {
-    return [
       {
-        source: "/api/:path*",
-        destination: `${apiUrl}/:path*`,
+        protocol: "https",
+        hostname: "*.public.blob.vercel-storage.com",
       },
-    ];
+    ],
   },
 };
 

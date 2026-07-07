@@ -2,60 +2,142 @@ import type {
   AdminPaymentOrder,
   AdminStats,
   AdminUser,
+  AiSearchResponse,
   Auction,
   AuthResponse,
   Bid,
+  BidCoachResponse,
   CreateListingRequest,
   InitiatePaymentResponse,
+  ListingDraftRequest,
+  ListingDraftResponse,
   LoginRequest,
+  ModerationScanResponse,
   PaymentOrder,
+  PaymentStatus,
   PlaceBidResponse,
   RegisterRequest,
   SellerStats,
+  UploadImageResponse,
   User,
 } from "@bidmarket/shared";
 
-function getApiBase() {
-  if (typeof window === "undefined") {
-    return process.env.API_URL ?? "http://localhost:4000";
+const API_BASE = "/api";
+
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
   }
-  return "/api";
 }
+
+export function getErrorMessage(error: unknown, fallback = "Request failed") {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return fallback;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
 
 async function request<T>(
   path: string,
   options: RequestInit = {},
   token?: string | null,
 ): Promise<T> {
-  const headers = new Headers(options.headers);
-  if (options.body != null && options.body !== "") {
-    headers.set("Content-Type", "application/json");
+  const method = (options.method ?? "GET").toUpperCase();
+  const maxAttempts = method === "GET" ? 3 : 1;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const headers = new Headers(options.headers);
+    if (options.body != null && options.body !== "") {
+      headers.set("Content-Type", "application/json");
+    }
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(`${API_BASE}${path}`, {
+        ...options,
+        headers,
+        cache: "no-store",
+      });
+    } catch {
+      if (attempt < maxAttempts - 1) {
+        await sleep(400 * (attempt + 1));
+        continue;
+      }
+      throw new Error(
+        "Cannot reach the API. Run npm run dev from the project root (and stop any old server on port 3000).",
+      );
+    }
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: "Request failed" }));
+      const message =
+        response.status >= 500
+          ? "The server is temporarily unavailable. Please try again."
+          : (error.message ?? "Request failed");
+
+      if (
+        method === "GET" &&
+        attempt < maxAttempts - 1 &&
+        RETRYABLE_STATUSES.has(response.status)
+      ) {
+        await sleep(400 * (attempt + 1));
+        continue;
+      }
+
+      throw new ApiError(message, response.status);
+    }
+
+    return response.json() as Promise<T>;
   }
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
+
+  throw new Error("Request failed");
+}
+
+async function uploadRequest<T>(
+  path: string,
+  formData: FormData,
+  token: string,
+): Promise<T> {
+  const headers = new Headers();
+  headers.set("Authorization", `Bearer ${token}`);
 
   let response: Response;
   try {
-    response = await fetch(`${getApiBase()}${path}`, {
-      ...options,
+    response = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
       headers,
+      body: formData,
       cache: "no-store",
     });
   } catch {
-    throw new Error(
-      "Cannot reach the API. Start it with: npm run dev:api",
-    );
+    throw new Error("Cannot reach the API. Start the app with: npm run dev");
   }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: "Request failed" }));
-    throw new Error(error.message ?? "Request failed");
+    const error = await response.json().catch(() => ({ message: "Upload failed" }));
+    throw new ApiError(error.message ?? "Upload failed", response.status);
   }
 
   return response.json() as Promise<T>;
 }
 
+/** Browser/client API access — always uses same-origin /api routes. */
 export const api = {
   getAuctions: (token?: string | null) =>
     request<Auction[]>("/auctions", {}, token),
@@ -87,20 +169,36 @@ export const api = {
   me: (token: string) =>
     request<{ user: User }>("/auth/me", {}, token),
 
+  getMyBids: (token: string) =>
+    request<Auction[]>("/me/bids", {}, token),
+
   becomeSeller: (token: string) =>
-    request<{ user: User }>("/seller/become", { method: "POST" }, token),
+    request<{ user: User; token: string }>("/seller/become", { method: "POST" }, token),
 
   getSellerAuctions: (token: string) =>
-    request<Auction[]>("/seller/auctions", {}, token),
+    request<Array<Auction & { paymentStatus: PaymentStatus | null }>>(
+      "/seller/auctions",
+      {},
+      token,
+    ),
 
   getSellerStats: (token: string) =>
     request<SellerStats>("/seller/stats", {}, token),
+
+  syncSellerPayments: (token: string) =>
+    request<{ synced: boolean }>("/seller/payments/sync", { method: "POST" }, token),
 
   createListing: (input: CreateListingRequest, token: string) =>
     request<Auction>("/seller/auctions", {
       method: "POST",
       body: JSON.stringify(input),
     }, token),
+
+  uploadListingImage: (file: File, token: string) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return uploadRequest<UploadImageResponse>("/seller/uploads", formData, token);
+  },
 
   initiatePayment: (auctionId: string, token: string) =>
     request<InitiatePaymentResponse>(
@@ -111,6 +209,20 @@ export const api = {
 
   getPaymentOrder: (orderId: string, token: string) =>
     request<PaymentOrder>(`/payments/orders/${orderId}`, {}, token),
+
+  syncPaymentOrder: (orderId: string, token: string) =>
+    request<PaymentOrder>(
+      `/payments/orders/${orderId}/sync`,
+      { method: "POST" },
+      token,
+    ),
+
+  getAuctionPaymentStatus: (auctionId: string, token: string) =>
+    request<{ status: PaymentStatus | null }>(
+      `/payments/auctions/${auctionId}/status`,
+      {},
+      token,
+    ),
 
   getPaymentOrders: (token: string) =>
     request<PaymentOrder[]>("/payments/orders", {}, token),
@@ -150,4 +262,28 @@ export const api = {
       { method: "PATCH", body: JSON.stringify({ isSeller }) },
       token,
     ),
+
+  generateListingDraft: (input: ListingDraftRequest, token: string) =>
+    request<ListingDraftResponse>("/ai/listing-draft", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }, token),
+
+  aiSearch: (query: string) =>
+    request<AiSearchResponse>("/ai/search", {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    }),
+
+  askBidCoach: (auctionId: string, question: string) =>
+    request<BidCoachResponse>("/ai/bid-coach", {
+      method: "POST",
+      body: JSON.stringify({ auctionId, question }),
+    }),
+
+  adminModerateAuctions: (token: string, auctionIds?: string[]) =>
+    request<ModerationScanResponse>("/admin/ai/moderate", {
+      method: "POST",
+      body: JSON.stringify({ auctionIds }),
+    }, token),
 };
