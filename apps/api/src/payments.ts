@@ -1,7 +1,13 @@
+import { randomUUID } from "node:crypto";
 import type { PaymentOrder, PaymentStatus } from "@bidmarket/shared";
 import type { Auction } from "@bidmarket/shared";
-import { auctions } from "./store.js";
-import { initiatePay, isFapshiConfigured } from "./fapshi.js";
+import { auctions, bids } from "./store.js";
+import { initiatePay, isFapshiConfigured, getPaymentStatus, normalizeFapshiStatus } from "./fapshi.js";
+import {
+  persistPaymentStore,
+  refreshPaymentStore,
+} from "./payment-persistence.js";
+import { persistMarketplaceStore, refreshMarketplaceStore } from "./marketplace-persistence.js";
 
 export const paymentOrders: PaymentOrder[] = [];
 
@@ -37,25 +43,145 @@ export function getBuyerOrders(buyerId: string): PaymentOrder[] {
     );
 }
 
-export function updateOrderStatus(
+export async function updateOrderStatus(
   orderId: string,
   status: PaymentStatus,
-): PaymentOrder | undefined {
+): Promise<PaymentOrder | undefined> {
+  await refreshPaymentStore(paymentOrders);
+  await refreshMarketplaceStore(auctions, bids);
+
   const order = findOrderById(orderId);
   if (!order) {
     return undefined;
   }
 
   order.status = status;
-  if (status === "successful") {
+    if (status === "successful") {
     order.paidAt = new Date().toISOString();
     const auction = auctions.find((item) => item.id === order.auctionId);
     if (auction) {
       auction.product.status = "sold";
+      auction.status = "ended";
+      await persistMarketplaceStore(auctions, bids, { critical: true });
     }
   }
 
+  await persistPaymentStore(paymentOrders, { critical: true });
   return order;
+}
+
+export async function syncPaymentOrderInternal(
+  orderId: string,
+): Promise<PaymentOrder | undefined> {
+  await refreshPaymentStore(paymentOrders);
+  await refreshMarketplaceStore(auctions, bids);
+
+  const order = findOrderById(orderId);
+  if (!order) {
+    return undefined;
+  }
+
+  if (order.status === "successful" || !isFapshiConfigured()) {
+    return order;
+  }
+
+  if (!order.fapshiTransId || order.fapshiTransId.startsWith("mock-")) {
+    return order;
+  }
+
+  const fapshiStatus = await getPaymentStatus(order.fapshiTransId);
+  const nextStatus = normalizeFapshiStatus(fapshiStatus.status);
+  if (nextStatus === order.status || nextStatus === "pending") {
+    return order;
+  }
+
+  return updateOrderStatus(order.id, nextStatus);
+}
+
+export async function syncOrderWithFapshi(
+  orderId: string,
+  buyerId: string,
+): Promise<PaymentOrder | undefined> {
+  await refreshPaymentStore(paymentOrders);
+  const order = findOrderById(orderId);
+  if (!order || order.buyerId !== buyerId) {
+    return undefined;
+  }
+
+  return syncPaymentOrderInternal(orderId);
+}
+
+export async function syncPendingPaymentsForSeller(sellerId: string) {
+  await refreshPaymentStore(paymentOrders);
+  await refreshMarketplaceStore(auctions, bids);
+
+  const sellerAuctionIds = new Set(
+    auctions
+      .filter((auction) => auction.product.sellerId === sellerId)
+      .map((auction) => auction.id),
+  );
+
+  const pendingOrders = paymentOrders.filter(
+    (order) =>
+      order.status === "pending" &&
+      sellerAuctionIds.has(order.auctionId) &&
+      order.fapshiTransId &&
+      !order.fapshiTransId.startsWith("mock-"),
+  );
+
+  for (const order of pendingOrders) {
+    try {
+      await syncPaymentOrderInternal(order.id);
+    } catch (error) {
+      console.error(`Failed to sync payment ${order.id}:`, error);
+    }
+  }
+
+  let marketplaceChanged = false;
+  for (const order of paymentOrders) {
+    if (order.status !== "successful") {
+      continue;
+    }
+
+    const auction = auctions.find((item) => item.id === order.auctionId);
+    if (!auction || auction.product.sellerId !== sellerId) {
+      continue;
+    }
+
+    if (auction.product.status !== "sold") {
+      auction.product.status = "sold";
+      marketplaceChanged = true;
+    }
+    if (auction.status !== "ended") {
+      auction.status = "ended";
+      marketplaceChanged = true;
+    }
+  }
+
+  if (marketplaceChanged) {
+    await persistMarketplaceStore(auctions, bids, { critical: true });
+  }
+}
+
+export function getPaymentStatusForAuction(
+  auctionId: string,
+): PaymentStatus | null {
+  return findOrderByAuction(auctionId)?.status ?? null;
+}
+
+export function getSellerRevenue(sellerId: string): number {
+  const sellerAuctionIds = new Set(
+    auctions
+      .filter((auction) => auction.product.sellerId === sellerId)
+      .map((auction) => auction.id),
+  );
+
+  return paymentOrders
+    .filter(
+      (order) =>
+        order.status === "successful" && sellerAuctionIds.has(order.auctionId),
+    )
+    .reduce((sum, order) => sum + order.amount, 0);
 }
 
 export async function createPaymentOrder(input: {
@@ -64,6 +190,8 @@ export async function createPaymentOrder(input: {
   buyerEmail: string;
   redirectUrl: string;
 }): Promise<{ order: PaymentOrder; paymentUrl: string }> {
+  await refreshPaymentStore(paymentOrders);
+
   const auction = auctions.find((item) => item.id === input.auctionId);
   if (!auction) {
     throw new Error("Auction not found");
@@ -86,7 +214,11 @@ export async function createPaymentOrder(input: {
     throw new Error("This auction has already been paid");
   }
 
-  const orderId = `order-${paymentOrders.length + 1}`;
+  if (existing?.status === "pending" && existing.paymentUrl) {
+    return { order: existing, paymentUrl: existing.paymentUrl };
+  }
+
+  const orderId = `order-${randomUUID()}`;
   const amount = auction.currentBid;
 
   if (!isFapshiConfigured()) {
@@ -103,13 +235,14 @@ export async function createPaymentOrder(input: {
       paidAt: null,
     };
     paymentOrders.push(order);
+    await persistPaymentStore(paymentOrders, { critical: true });
     return { order, paymentUrl: mockUrl };
   }
 
   const fapshi = await initiatePay({
     amount,
     email: input.buyerEmail,
-    redirectUrl: input.redirectUrl,
+    redirectUrl: `${input.redirectUrl}?orderId=${orderId}`,
     userId: input.buyerId,
     externalId: orderId,
     message: `BidMarket — ${auction.product.title}`,
@@ -128,5 +261,6 @@ export async function createPaymentOrder(input: {
   };
 
   paymentOrders.push(order);
+  await persistPaymentStore(paymentOrders, { critical: true });
   return { order, paymentUrl: fapshi.link };
 }

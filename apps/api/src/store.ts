@@ -10,6 +10,17 @@ import type {
   User,
 } from "@bidmarket/shared";
 import { getMinimumBid } from "@bidmarket/shared";
+import { createSessionToken } from "@bidmarket/shared";
+import { randomUUID } from "node:crypto";
+import {
+  upsertPersistedUser,
+  refreshAuthStore,
+  applySeedPasswords,
+} from "./persistence.js";
+import {
+  persistMarketplaceStore,
+  refreshMarketplaceStore,
+} from "./marketplace-persistence.js";
 
 const now = Date.now();
 
@@ -162,11 +173,11 @@ export const bids: Bid[] = [
   },
 ];
 
-const passwords = new Map<string, string>([
-  ["demo@bidmarket.com", "password123"],
-  ["seller@bidmarket.com", "password123"],
-  ["admin@bidmarket.com", "password123"],
-]);
+const passwords = new Map<string, string>();
+
+export { passwords };
+
+applySeedPasswords(passwords);
 
 export function findUserByEmail(email: string): User | undefined {
   return users.find((user) => user.email.toLowerCase() === email.toLowerCase());
@@ -177,39 +188,62 @@ export function findUserById(id: string): User | undefined {
 }
 
 export function validatePassword(email: string, password: string): boolean {
-  return passwords.get(email.toLowerCase()) === password;
+  const stored = passwords.get(email.toLowerCase());
+  return stored !== undefined && stored === password;
 }
 
-export function registerUser(input: RegisterRequest): User {
-  const existing = findUserByEmail(input.email);
+function nextUserId(): string {
+  return `user-${randomUUID()}`;
+}
+
+export async function registerUser(input: RegisterRequest): Promise<User> {
+  await refreshAuthStore(users, passwords);
+
+  const email = input.email.trim().toLowerCase();
+  const name = input.name.trim();
+  const password = input.password;
+
+  if (!email || !name || !password) {
+    throw new Error("Missing required fields");
+  }
+
+  const existing = findUserByEmail(email);
   if (existing) {
     throw new Error("Email already registered");
   }
 
   const user: User = {
-    id: `user-${users.length + 1}`,
-    email: input.email.toLowerCase(),
-    name: input.name,
+    id: nextUserId(),
+    email,
+    name,
     roles: ["bidder"],
     isSeller: false,
     isAdmin: false,
   };
 
   users.push(user);
-  passwords.set(user.email, input.password);
+  passwords.set(email, password);
+  await upsertPersistedUser(users, passwords, user, password);
   return user;
 }
 
-export function loginUser(input: LoginRequest): AuthResponse {
-  const user = findUserByEmail(input.email);
-  if (!user || !validatePassword(input.email, input.password)) {
+export function createAuthResponse(user: User): AuthResponse {
+  return {
+    user,
+    token: createSessionToken(user),
+  };
+}
+
+export async function loginUser(input: LoginRequest): Promise<AuthResponse> {
+  await refreshAuthStore(users, passwords);
+
+  const email = input.email.trim().toLowerCase();
+  const user = findUserByEmail(email);
+  if (!user || !validatePassword(email, input.password)) {
     throw new Error("Invalid email or password");
   }
 
-  return {
-    user,
-    token: `mock-token-${user.id}`,
-  };
+  return createAuthResponse(user);
 }
 
 export function getAuctionBids(auctionId: string): Bid[] {
@@ -220,11 +254,13 @@ export function getAuctionBids(auctionId: string): Bid[] {
     );
 }
 
-export function placeBid(
+export async function placeBid(
   auctionId: string,
   user: User,
   input: PlaceBidRequest,
-): { auction: Auction; bid: Bid } {
+): Promise<{ auction: Auction; bid: Bid }> {
+  await refreshMarketplaceStore(auctions, bids);
+
   const auction = auctions.find((item) => item.id === auctionId);
   if (!auction) {
     throw new Error("Auction not found");
@@ -249,7 +285,7 @@ export function placeBid(
   }
 
   const bid: Bid = {
-    id: `bid-${bids.length + 1}`,
+    id: `bid-${randomUUID()}`,
     auctionId,
     userId: user.id,
     userName: user.name,
@@ -262,21 +298,43 @@ export function placeBid(
   auction.bidCount += 1;
   auction.highBidderId = user.id;
 
+  await persistMarketplaceStore(auctions, bids, { critical: true });
   return { auction, bid };
 }
 
-export function becomeSeller(user: User): User {
+export async function becomeSeller(user: User): Promise<User> {
+  await refreshAuthStore(users, passwords);
+
   if (user.isSeller) {
     return user;
   }
 
-  user.roles = [...user.roles, "seller"];
-  user.isSeller = true;
-  return user;
+  let stored = findUserById(user.id);
+  if (!stored) {
+    stored = { ...user };
+    users.push(stored);
+  }
+
+  stored.roles = [...stored.roles, "seller"];
+  stored.isSeller = true;
+  await upsertPersistedUser(users, passwords, stored);
+  return stored;
 }
 
 export function getSellerAuctions(sellerId: string): Auction[] {
   return auctions.filter((auction) => auction.product.sellerId === sellerId);
+}
+
+export function getUserBidAuctions(userId: string): Auction[] {
+  const auctionIds = new Set(
+    bids.filter((bid) => bid.userId === userId).map((bid) => bid.auctionId),
+  );
+
+  return auctions
+    .filter((auction) => auctionIds.has(auction.id))
+    .sort(
+      (a, b) => new Date(b.endsAt).getTime() - new Date(a.endsAt).getTime(),
+    );
 }
 
 export function getSellerStats(sellerId: string): SellerStats {
@@ -295,10 +353,12 @@ export function getSellerStats(sellerId: string): SellerStats {
   return { activeListings, totalBids, totalRevenue };
 }
 
-export function createListing(
+export async function createListing(
   seller: User,
   input: CreateListingRequest,
-): Auction {
+): Promise<Auction> {
+  await refreshMarketplaceStore(auctions, bids);
+
   if (!seller.isSeller) {
     throw new Error("Seller account required");
   }
@@ -315,15 +375,15 @@ export function createListing(
     throw new Error("Bid increment must be at least 100 XAF");
   }
 
-  if (input.durationHours < 1 || input.durationHours > 168) {
-    throw new Error("Duration must be between 1 and 168 hours");
+  if (input.durationMinutes < 2 || input.durationMinutes > 10_080) {
+    throw new Error("Duration must be between 2 minutes and 7 days");
   }
 
-  const productId = `product-${auctions.length + 1}`;
-  const auctionId = `auction-${auctions.length + 1}`;
+  const productId = `product-${randomUUID()}`;
+  const auctionId = `auction-${randomUUID()}`;
   const startsAt = new Date();
   const endsAt = new Date(
-    startsAt.getTime() + input.durationHours * 60 * 60 * 1000,
+    startsAt.getTime() + input.durationMinutes * 60 * 1000,
   );
 
   const auction: Auction = {
@@ -350,5 +410,6 @@ export function createListing(
   };
 
   auctions.unshift(auction);
+  await persistMarketplaceStore(auctions, bids, { critical: true });
   return auction;
 }

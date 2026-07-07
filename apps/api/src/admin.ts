@@ -4,8 +4,10 @@ import type {
   AdminUser,
   Auction,
 } from "@bidmarket/shared";
-import { auctions, bids, findUserById, users } from "./store.js";
+import { auctions, bids, findUserById, passwords, users } from "./store.js";
 import { paymentOrders } from "./payments.js";
+import { upsertPersistedUser } from "./persistence.js";
+import { persistMarketplaceStore } from "./marketplace-persistence.js";
 
 export function getAdminStats(): AdminStats {
   const liveAuctions = auctions.filter((a) => a.status === "live").length;
@@ -63,7 +65,7 @@ export function getAdminPayments(): AdminPaymentOrder[] {
     );
 }
 
-export function endAuctionEarly(auctionId: string): Auction {
+export async function endAuctionEarly(auctionId: string): Promise<Auction> {
   const auction = auctions.find((a) => a.id === auctionId);
   if (!auction) {
     throw new Error("Auction not found");
@@ -71,21 +73,23 @@ export function endAuctionEarly(auctionId: string): Auction {
 
   auction.status = "ended";
   auction.endsAt = new Date().toISOString();
+  await persistMarketplaceStore(auctions, bids);
   return auction;
 }
 
-export function removeAuction(auctionId: string): void {
+export async function removeAuction(auctionId: string): Promise<void> {
   const index = auctions.findIndex((a) => a.id === auctionId);
   if (index === -1) {
     throw new Error("Auction not found");
   }
   auctions.splice(index, 1);
+  await persistMarketplaceStore(auctions, bids);
 }
 
-export function updateUserSellerRole(
+export async function updateUserSellerRole(
   userId: string,
   isSeller: boolean,
-): AdminUser {
+): Promise<AdminUser> {
   const user = findUserById(userId);
   if (!user) {
     throw new Error("User not found");
@@ -101,6 +105,8 @@ export function updateUserSellerRole(
   } else if (!isSeller) {
     user.roles = user.roles.filter((role) => role !== "seller");
   }
+
+  await upsertPersistedUser(users, passwords, user);
 
   return {
     id: user.id,
